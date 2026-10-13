@@ -78,7 +78,7 @@ The online npm audit during setup reported four high-severity advisories in the 
 
 ## Vercel deployment
 
-Import the `gscamcb-backend` GitHub repository into Vercel using the Express preset. The checked-in `vercel.json` runs `npm ci` and `npm run build`, generating Prisma before compiling. Node.js is pinned to 22.x. Vercel uses the exported app in `src/app.ts`; `src/server.ts` remains the local server entry point.
+Import the `gscamcb-backend` GitHub repository into Vercel using the Express preset. The checked-in `vercel.json` runs `npm ci --include=dev` (so build tools are installed even with `NODE_ENV=production`) and `npm run build`, generating Prisma before compiling. Node.js is pinned to 22.x. Vercel uses the exported app in `src/app.ts`; `src/server.ts` remains the local server entry point.
 
 Set these environment variables in Vercel before deploying:
 
