@@ -1,0 +1,10 @@
+model Address {
+  id                String          @id @default(uuid()) @db.Uuid
+  addressLine       String          @unique
+  presentProfiles   Profile[]       @relation("PresentAddress")
+  permanentProfiles Profile[]       @relation("PermanentAddress")
+  guardians         Guardian[]
+  localGuardians    LocalGuardian[]
+
+  @@map("addresses")
+}

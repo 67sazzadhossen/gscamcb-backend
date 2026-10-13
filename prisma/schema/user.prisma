@@ -1,10 +1,43 @@
-// Starter model; authentication and school roles will be implemented separately.
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  TEACHER
+  STUDENT
+  ACCOUNTANT
+  STAFF
+}
+
+enum UserStatus {
+  ACTIVE
+  BLOCKED
+}
+
 model User {
-  id        String   @id @default(uuid()) @db.Uuid
-  name      String
-  email     String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                 String     @id @default(uuid()) @db.Uuid
+  userId             String     @unique @db.VarChar(8)
+  email              String     @unique
+  passwordHash       String
+  role               UserRole
+  status             UserStatus @default(ACTIVE)
+  isDeleted          Boolean    @default(false)
+  deletedAt          DateTime?
+  mustChangePassword Boolean    @default(true)
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+  profile            Profile?   @relation("AccountProfile")
+
+  admittedStudents  AcademicInfo[] @relation("AdmissionApprover")
+  requestedWaivers  Waiver[]       @relation("WaiverRequester")
+  decidedWaivers    Waiver[]       @relation("WaiverApprover")
+  collectedStudents Profile[]      @relation("CollectedStudents")
+  homeVisits        HomeVisit[]
 
   @@map("users")
+}
+
+model UserIdSequence {
+  prefix String @id @db.VarChar(5)
+  serial Int    @default(0)
+
+  @@map("user_id_sequences")
 }

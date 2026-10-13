@@ -1,0 +1,14 @@
+model Name {
+  id                String         @id @default(uuid()) @db.Uuid
+  firstName         String
+  middleName        String?
+  lastName          String
+  bengaliFirstName  String?
+  bengaliMiddleName String?
+  bengaliLastName   String?
+  profile           Profile?
+  guardian          Guardian?
+  localGuardian     LocalGuardian?
+
+  @@map("names")
+}

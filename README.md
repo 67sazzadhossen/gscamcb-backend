@@ -87,3 +87,176 @@ Set these environment variables in Vercel before deploying:
 - `CORS_ORIGIN`: your frontend origin (comma-separated if needed).
 
 Local `.env` files are excluded from deployment. Schema changes are not run automatically during builds. Verify `/` and `/api/v1/health` after deployment; health reports process status, not database connectivity.
+
+## Users, profiles, and super admin
+
+Roles: `SUPER_ADMIN`, `ADMIN`, `TEACHER`, `STUDENT`, `ACCOUNTANT`, `STAFF`. Shifts: `MORNING`, `DAY`.
+
+The public school user ID is a string with exactly eight digits: `YY + RR + S + NNN`. Role codes are `01` super admin, `02` admin, `03` teacher, `04` student, `05` accountant, `06` staff. Shift codes are `1` morning and `2` day. Example: `26041001` is the first morning-shift student created in 2026. The year uses Asia/Dhaka time. Serials start at `001` independently for each year/role/shift, with a maximum of `999`. Exceeding that limit returns 409. The PostgreSQL counter increments atomically inside the user/profile creation transaction. UUIDs remain the internal primary keys; the generated school ID, role, and shift cannot be edited through account updates.
+
+`User` stores account identity, hashed password, role, and status. Its one-to-one `Profile` stores a required Name relation, optional Image relation, version, isCadet, shift, phone, address, date of birth, gender, blood group, photo URL, and optional guardian/local-guardian relations. Password hashes are excluded from API responses. Accounts start with `mustChangePassword=true` and must change their password before accessing management endpoints.
+
+Set `JWT_SECRET` to a random value at least 32 characters long in local and Vercel environments. Tokens expire after one hour. This initial implementation does not include refresh tokens or a frontend sign-in integration.
+
+Configure `SUPER_ADMIN_NAME`, `SUPER_ADMIN_EMAIL`, and `DEFAULT_PASSWORD` in the ignored `.env`, then run:
+
+```bash
+npm run db:push
+npm run seed:super-admin
+```
+
+The seed creates a morning-shift super admin and a profile. Rerunning it does not reset the existing password or promote an account with another role. The initial seed credentials are local configuration and must not be committed.
+
+| Endpoint                            | Access                                                                                                                    |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/v1/auth/login`           | Body: `{ identifier, password }`; identifier is email or 8-digit user ID                                                  |
+| `POST /api/v1/auth/change-password` | Signed in; body: `{ currentPassword, newPassword }`                                                                       |
+| `GET /api/v1/users/me`              | Signed in                                                                                                                 |
+| `POST /api/v1/users`                | Admin/super admin; email, password, role, required profile (name, shift, optional version/isCadet/image and other fields) |
+| `GET /api/v1/users`                 | Admin/super admin; paginated with page/limit and optional role/shift/status filters                                       |
+| `GET /api/v1/users/:userId`         | Admin/super admin                                                                                                         |
+| `PATCH /api/v1/users/:userId`       | Admin/super admin; email, status only                                                                                     |
+| `GET /api/v1/profiles/me`           | Signed in                                                                                                                 |
+| `PATCH /api/v1/profiles/me`         | Signed in; personal profile fields only                                                                                   |
+
+Send `Authorization: Bearer <accessToken>` on protected requests. Only super admins can create or modify admins; the account update endpoint does not modify super-admin accounts. Blocking an account denies subsequent authenticated requests. This module does not create fabricated sample accounts for the other roles; admins create actual school users through the shared endpoint.
+
+`BCRYPT_SALT_ROUNDS` configures password hashing (default 12; supported range 10–15). The super-admin seed reads `DEFAULT_PASSWORD`; rerunning the seed never overwrites an existing account password.
+
+Existing names and shifts were moved from `users` to `profiles` using the transactional SQL in `scripts/sql/move-profile-fields.sql`. It is a one-time transition for the old schema; do not run it on a fresh database. School user IDs and credentials remain unchanged.
+
+### Names, guardians, and images
+
+`Name` is a shared table used by Profile, Guardian, and LocalGuardian. It contains firstName, optional middleName, lastName, and optional bengaliFirstName/bengaliMiddleName/bengaliLastName. Each person record has its own required name relation. Guardian records retain relationship, phone, email, address, and occupation.
+
+Profile includes optional `version` (`ENGLISH` or `BANGLA`) and `isCadet` (defaults to false). Existing versions remain unset until selected. Image stores `displayUrl` and a unique Cloudinary `publicId`, linked optionally to a profile. The API accepts upload metadata; it does not upload or delete Cloudinary assets yet.
+
+Supply names under `profile.name`, `profile.guardian.name`, and `profile.localGuardian.name`. Updates supply complete name objects (firstName and lastName are required). Profile updates can create/update the image and guardian records atomically. Omitted relations remain unchanged. Names and image metadata are included in user/profile responses.
+
+Example profile payload:
+
+```json
+{
+  "name": {
+    "firstName": "Md",
+    "middleName": "Sazzad",
+    "lastName": "Hossen"
+  },
+  "shift": "MORNING",
+  "version": "BANGLA",
+  "isCadet": false,
+  "image": {
+    "displayUrl": "https://res.cloudinary.com/YOUR-CLOUD/image/upload/photo.webp",
+    "publicId": "profiles/photo"
+  }
+}
+```
+
+The transactional scripts in `scripts/sql/` preserve data while transitioning the prior schemas. They are one-time transitions, not fresh-database setup scripts. The final transition moves names into `names` and creates the `images` table. Database-only deletion of an owner does not remove its linked Name row automatically; a future account deletion service should remove owned Name records explicitly. Image metadata cascades when its profile is deleted; Cloudinary resource cleanup requires the future upload/deletion integration.
+
+### Student academic and payment info
+
+`AcademicInfo` stores admissionClassId, currentClassId, optional sectionId, optional rollNumber, and academicYear. Class names are returned through relations. `PaymentInfo` stores admissionFee, annualFee, monthlyFee, and academicYear. Both are optional one-to-one profile relations and only apply to students. Fees use Decimal(12,2) and serialize as decimal strings. These are current fee settings, not payment receipts or academic history.
+
+Provide `profile.academicInfo` and `profile.paymentInfo` when creating a student. Existing students can initialize each with POST `/api/v1/academic-info/:userId` and `/api/v1/payment-info/:userId`. GET/PATCH are available on the same paths. Academic management requires admin or super admin; payment management also permits accountants. Students cannot change academic or payment info through self-profile updates.
+
+Use POST `/api/v1/academic-info/:userId/promote` to update class and year together with optional fees:
+
+```json
+{
+  "currentClassId": "CLASS_UUID",
+  "sectionId": "SECTION_UUID",
+  "rollNumber": 1,
+  "academicYear": 2027,
+  "paymentInfo": {
+    "annualFee": "3500.00",
+    "monthlyFee": "1700.00"
+  }
+}
+```
+
+Promotion preserves the original admissionClassId, requires a later academic year, and updates both records atomically. Existing payment info advances to the same year even when no fee changes are supplied. Supplying new fees requires an initialized PaymentInfo record. Duplicate/conflicting promotions are rejected. Omitted fee values remain unchanged. Direct academic PATCH supports corrections; use the promotion endpoint for coordinated yearly changes.
+
+The one-time `scripts/sql/separate-academic-info.sql` transition copies existing class/year information into AcademicInfo before dropping class columns from PaymentInfo.
+
+### Admin-managed classes and sections
+
+- `GET /api/v1/classes`: signed-in users can list classes with their sections.
+- `POST /api/v1/classes`: admin/super admin; body `{ "name": "Class 1" }`.
+- `PATCH /api/v1/classes/:id`: admin/super admin; rename a class.
+- `GET /api/v1/sections?classId=CLASS_UUID`: signed-in users; optional class filter.
+- `POST /api/v1/sections`: admin/super admin; body `{ "name": "A", "classId": "CLASS_UUID" }`.
+- `PATCH /api/v1/sections/:id`: admin/super admin; rename only. Class ownership cannot change.
+
+Names are unique for classes, and section names are unique within their class. Academic creation accepts UUIDs for admissionClassId/currentClassId/sectionId. Both the service and composite database foreign key ensure sectionId belongs to currentClassId. Assigned roll numbers must be positive and unique within class + section + year. Unassigned section/roll fields remain null; roll uniqueness is enforced when both are assigned.
+
+During promotion, supply new sectionId and rollNumber if applicable. Omitted placement fields are cleared rather than carrying the previous year's section/roll. Direct class corrections also clear section/roll unless replacements are supplied. AdmissionClassId remains unchanged. Referenced classes/sections cannot be removed while in use; deletion endpoints are not provided.
+
+`scripts/sql/class-section-relations.sql` preserves old class labels by creating matching Class records and replacing labels with IDs. Existing section/roll information is left unset rather than guessed.
+
+### Prospect collection, home visits, and admission
+
+Profiles can exist without a User account or shift. A collected prospect has an AcademicInfo record with no class/year assignment and admissionStatus `PROSPECT`. No school ID, login credentials, or fees are created until admission.
+
+Admission statuses: `PROSPECT`, `FOLLOW_UP`, `INTERESTED`, `APPLIED`, `ADMITTED`, `NOT_INTERESTED`, `CANCELLED`. Student statuses after admission: `ACTIVE`, `ON_LEAVE`, `TRANSFERRED`, `WITHDRAWN`, `GRADUATED`. User ACTIVE/BLOCKED remains a separate login-account setting. Statuses do not automatically block login; explicitly block the User if needed.
+
+| Endpoint                                             | Access / behavior                                                                                   |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `POST /api/v1/students/prospects`                    | Teacher/admin/super admin; profile data with required name, optional shift/contact/guardian details |
+| `GET /api/v1/students/prospects`                     | Paginated; optional admissionStatus filter; teachers see only their collected students              |
+| `GET /api/v1/students/prospects/:profileId`          | Teacher owner or admin/super admin                                                                  |
+| `PATCH /api/v1/students/prospects/:profileId/status` | Body `{ admissionStatus }`; ADMITTED is reserved for admission conversion                           |
+| `POST /api/v1/students/prospects/:profileId/visits`  | Visit notes, optional visitDate and nextFollowUpDate; staff identity comes from the session         |
+| `GET /api/v1/students/prospects/:profileId/visits`   | Visit history, including the recording staff member                                                 |
+| `POST /api/v1/students/prospects/:profileId/admit`   | Admin/super admin; creates the student account and fills academic placement atomically              |
+
+Admission body includes email, shift, academicInfo, optional paymentInfo, and optional initial password (falls back to DEFAULT_PASSWORD). AcademicInfo accepts admissionDate (`YYYY-MM-DD`) and admissionYear. If omitted during admission, the date uses the current school date in Asia/Dhaka and the year follows that date. Explicit year/date must agree. Current academicYear is separate from admissionYear; promotion preserves original admission date/year/class. Existing unknown admission dates are not fabricated.
+
+Admission conversion keeps the existing profile, guardian data, collector, and visit history, assigns an eight-digit student ID, and marks admissionStatus ADMITTED/studentStatus ACTIVE. Repeat admission is rejected. Teachers cannot admit students or change admitted records back to recruitment statuses. Use the academic-info PATCH endpoint to manage enrolled studentStatus. Only active admitted students can be promoted.
+
+HomeVisit records visitedById, visitDate, notes, and nextFollowUpDate. Teachers can manage only prospects they collected; admins can manage all. Submitted teacher/collector IDs are not accepted. Past visits can be entered using an explicit visitDate; follow-up date cannot precede that date.
+
+### Blocking and recycle bin
+
+User includes `isDeleted` and `deletedAt`; blocking uses the existing ACTIVE/BLOCKED `status` enum. Login and authenticated requests reject deleted or BLOCKED accounts immediately. `PATCH /api/v1/users/:userId` accepts `{ "status": "BLOCKED" }` or ACTIVE. Normal account lists and reads exclude deleted records; email and school ID stay reserved while in the recycle bin.
+
+Admin/super-admin endpoints:
+
+| Endpoint                                                 | Behavior                                            |
+| -------------------------------------------------------- | --------------------------------------------------- |
+| `DELETE /api/v1/users/:userId`                           | Soft delete; retain all data                        |
+| `GET /api/v1/users/recycle-bin`                          | Paginated deleted accounts                          |
+| `PATCH /api/v1/users/:userId/restore`                    | Restore; retain prior blocked state                 |
+| `DELETE /api/v1/users/:userId/permanent`                 | Permanently remove a student already in recycle bin |
+| `GET /api/v1/students/recycle-bin`                       | Deleted student accounts and saved prospects        |
+| `DELETE /api/v1/students/prospects/:profileId`           | Recycle a saved prospect or student                 |
+| `PATCH /api/v1/students/prospects/:profileId/restore`    | Restore a saved prospect or student                 |
+| `DELETE /api/v1/students/prospects/:profileId/permanent` | Permanently delete from recycle bin only            |
+
+Standalone prospects use Profile.isDeleted/deletedAt because they have no account. Account-linked students use User flags. Teachers cannot access recycle-bin management. Super-admin accounts cannot be recycled, blocked, or permanently deleted through these routes. Admin accounts require a super admin to modify. Permanent account deletion currently supports students only; staff accounts can be recycled/restored.
+
+Permanent student deletion removes profile, guardian/local-guardian records, owned Name records, image metadata, academic/payment settings, and home visits in a transaction. Existing classes, sections, collector accounts, and ID counters are retained. Shared Name rows still referenced elsewhere are preserved. Cloudinary resource deletion is pending the upload integration; deleting metadata does not remove the remote asset.
+
+### Optional personal details and admission approver
+
+Profile accepts optional birthRegistrationNumber (digits stored as a string, preserving leading zeros), nationality, religion, emergencyContactName, emergencyContactPhone, emergencyRelationship, and medicalNotes. These use the existing profile create/update validation and access controls; no duplicate contact or status tables were added.
+
+AcademicInfo.admittedById references the administrator who confirmed admission. Admission conversion, direct student creation with academic info, and later academic-record creation obtain the approver ID from the authenticated session. Clients cannot provide or edit it. Responses include the approver's school ID and name through the relation. Existing unknown approvers remain unset. CollectedById remains separate and continues identifying the collecting teacher.
+
+### Address, transportation, and waivers
+
+Profile now references `presentAddress` and `permanentAddress` in a shared Address table. Guardian and LocalGuardian reference that same table. The old raw address columns were removed after migrating their data. Previous Profile.address values become present addresses; unknown permanent addresses remain unset.
+
+Address input is `{ "addressLine": "Cantonment, Mymensingh" }`. Whitespace is normalized, and addressLine is unique. Identical normalized values reuse one record, including when present/permanent/guardian addresses match. Changing an address reconnects only that relation; it does not edit the shared row and unexpectedly change someone else's address. No sameAsPresent flag or second copied address is stored.
+
+Transportation is only `Profile.usesTransport` (boolean, default false), as requested. No transportation table, route, or copied fee fields were added.
+
+Waiver holds profileId, feeType (`ADMISSION`, `ANNUAL`, `MONTHLY`), discountType (`AMOUNT`, `PERCENTAGE`), one decimal value, validity dates, reason, status, and requester/decision attribution. It does not copy original fees or calculated net fees. Values must be positive; percentages cannot exceed 100. An end date is optional but cannot precede the start date.
+
+- `POST /api/v1/waivers/:userId`: admin/super admin/accountant; request a waiver.
+- `GET /api/v1/waivers/:userId`: admin/super admin/accountant; list a student's waiver history.
+- `PATCH /api/v1/waivers/:id/decision`: admin/super admin; `{ "status": "APPROVED" }`, REJECTED, or REVOKED.
+
+Requests always start PENDING. Requester and decision-maker IDs come from the session. Only pending waivers can be approved/rejected; only approved waivers can be revoked. Overlapping approved waivers for the same student, fee type, and inclusive validity period are rejected with a transaction lock to cover concurrent decisions. Waivers do not automatically change PaymentInfo or issue receipts; fee assessment can apply approved waivers later.
+
+Permanent profile deletion removes its waivers and unused address records. Address records still used by other profiles or guardians are preserved. `scripts/sql/shared-addresses.sql` is the one-time data-preserving transition for the prior raw address columns.

@@ -1,0 +1,68 @@
+enum Version {
+  ENGLISH
+  BANGLA
+}
+
+enum Shift {
+  MORNING
+  DAY
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum BloodGroup {
+  A_POSITIVE
+  A_NEGATIVE
+  B_POSITIVE
+  B_NEGATIVE
+  AB_POSITIVE
+  AB_NEGATIVE
+  O_POSITIVE
+  O_NEGATIVE
+}
+
+model Profile {
+  id                      String         @id @default(uuid()) @db.Uuid
+  userId                  String?        @unique @db.Uuid
+  user                    User?          @relation("AccountProfile", fields: [userId], references: [id], onDelete: SetNull)
+  collectedById           String?        @db.Uuid
+  collectedBy             User?          @relation("CollectedStudents", fields: [collectedById], references: [id], onDelete: SetNull)
+  homeVisits              HomeVisit[]
+  guardian                Guardian?
+  localGuardian           LocalGuardian?
+  version                 Version?
+  isCadet                 Boolean        @default(false)
+  academicInfo            AcademicInfo?
+  paymentInfo             PaymentInfo?
+  image                   Image?
+  shift                   Shift?
+  usesTransport           Boolean        @default(false)
+  presentAddressId        String?        @db.Uuid
+  presentAddress          Address?       @relation("PresentAddress", fields: [presentAddressId], references: [id], onDelete: SetNull)
+  permanentAddressId      String?        @db.Uuid
+  permanentAddress        Address?       @relation("PermanentAddress", fields: [permanentAddressId], references: [id], onDelete: SetNull)
+  waivers                 Waiver[]
+  phone                   String?
+  birthRegistrationNumber String?
+  nationality             String?
+  religion                String?
+  emergencyContactName    String?
+  emergencyContactPhone   String?
+  emergencyRelationship   String?
+  medicalNotes            String?
+  dateOfBirth             DateTime?
+  gender                  Gender?
+  bloodGroup              BloodGroup?
+  nameId                  String         @unique @db.Uuid
+  name                    Name           @relation(fields: [nameId], references: [id])
+  isDeleted               Boolean        @default(false)
+  deletedAt               DateTime?
+  createdAt               DateTime       @default(now())
+  updatedAt               DateTime       @updatedAt
+
+  @@map("profiles")
+}
