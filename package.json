@@ -1,0 +1,54 @@
+{
+  "name": "gscamcb-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "GSCAMCB school management API",
+  "main": "dist/src/server.js",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start:dev": "npm run dev",
+    "start": "node dist/src/server.js",
+    "start:prod": "npm start",
+    "build": "npm run prisma:generate && tsc",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "prisma:generate": "prisma generate",
+    "prisma:validate": "prisma validate",
+    "prisma:format": "prisma format",
+    "db:push": "prisma db push",
+    "prisma:studio": "prisma studio",
+    "test": "tsx --test tests/*.test.ts",
+    "verify": "npm run prisma:validate && npm run typecheck && npm run lint && npm test && npm run build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "dependencies": {
+    "@prisma/client": "6.19.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "http-status": "1.8.1",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.32.0",
+    "@types/cookie-parser": "^1.4.10",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.3",
+    "@types/node": "^22.0.0",
+    "@types/supertest": "^6.0.3",
+    "eslint": "^9.32.0",
+    "globals": "^16.3.0",
+    "prettier": "^3.9.10",
+    "prisma": "6.19.0",
+    "supertest": "^7.1.4",
+    "tsx": "^4.20.0",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.38.0"
+  }
+}
