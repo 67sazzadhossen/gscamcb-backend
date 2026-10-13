@@ -1,8 +1,10 @@
+import { updateStudentInfoSchema } from './studentInfo.validation';
 import { Router } from 'express';
 import { auth } from '../../middlewares/auth';
 import { validateRequest } from '../../middlewares/validateRequest';
 import { StudentControllers } from './student.controller';
 import {
+  updateStudentDraftSchema,
   createProspectSchema,
   updateAdmissionStatusSchema,
   admitStudentSchema,
@@ -16,6 +18,12 @@ router.post(
   StudentControllers.admitStudent,
 );
 router.use(auth('SUPER_ADMIN', 'ADMIN', 'TEACHER'));
+router.get('/collection-summary/me', StudentControllers.collectionSummary);
+router.get(
+  '/collection-summary/:teacherId',
+  auth('SUPER_ADMIN', 'ADMIN'),
+  StudentControllers.collectionSummary,
+);
 router.post(
   '/prospects',
   validateRequest(createProspectSchema),
@@ -41,6 +49,16 @@ router.delete(
   '/prospects/:profileId/permanent',
   auth('SUPER_ADMIN', 'ADMIN'),
   StudentControllers.permanentlyDeleteStudent,
+);
+router.patch(
+  '/prospects/:profileId',
+  validateRequest(updateStudentDraftSchema),
+  StudentControllers.updateStudentDraft,
+);
+router.patch(
+  '/prospects/:profileId/info',
+  validateRequest(updateStudentInfoSchema),
+  StudentControllers.updateStudentInfo,
 );
 router.get('/prospects/:profileId', StudentControllers.getStudent);
 router.patch(

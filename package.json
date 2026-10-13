@@ -26,7 +26,9 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "postinstall": "prisma generate",
-    "seed:super-admin": "tsx src/scripts/seedSuperAdmin.ts"
+    "seed:super-admin": "tsx src/scripts/seedSuperAdmin.ts",
+    "db:refactor-student": "tsx src/scripts/refactorStudentInfo.ts",
+    "seed:roles": "tsx src/scripts/seedRoles.ts"
   },
   "dependencies": {
     "@prisma/client": "6.19.0",

@@ -7,13 +7,15 @@ import {
   updateAdmissionStatusSchema,
   admitStudentSchema,
   homeVisitSchema,
+  updateStudentDraftSchema,
 } from '../src/app/modules/student/student.validation';
 import { admissionDetails } from '../src/app/modules/academicInfo/academicInfo.utils';
 const classId = '11111111-1111-4111-8111-111111111111';
-test('prospects need no login credentials, shift, or class placement', () => {
+test('prospects require an ID shift but email, password and placement are optional', () => {
   const prospect = {
     name: { firstName: 'Student', lastName: 'Name' },
     phone: '01700000000',
+    shift: 'MORNING',
   };
   assert.equal(createProspectSchema.safeParse(prospect).success, true);
   assert.equal(
@@ -21,7 +23,7 @@ test('prospects need no login credentials, shift, or class placement', () => {
       ...prospect,
       email: 'student@example.com',
     }).success,
-    false,
+    true,
   );
   assert.equal(
     createProspectSchema.safeParse({
@@ -31,7 +33,7 @@ test('prospects need no login credentials, shift, or class placement', () => {
     false,
   );
 });
-test('recruitment statuses cannot bypass admission conversion', () => {
+test('status updates accept ADMITTED for service-level admin admission', () => {
   for (const admissionStatus of [
     'PROSPECT',
     'FOLLOW_UP',
@@ -47,7 +49,7 @@ test('recruitment statuses cannot bypass admission conversion', () => {
   assert.equal(
     updateAdmissionStatusSchema.safeParse({ admissionStatus: 'ADMITTED' })
       .success,
-    false,
+    true,
   );
 });
 test('admission date/year are consistent and independent of current academic year', () => {
@@ -67,7 +69,7 @@ test('admission date/year are consistent and independent of current academic yea
     /must match/,
   );
 });
-test('admission requires account/class data and synchronized fee year', () => {
+test('admission can use saved data and rejects conflicting supplied fee years', () => {
   const payload = {
     email: 'student@example.com',
     shift: 'MORNING',
@@ -122,7 +124,8 @@ test('prospect and home-visit endpoints require authentication', async () => {
 test('personal and emergency fields are optional and registration preserves leading zeros', () => {
   const input = {
     name: { firstName: 'Student', lastName: 'Name' },
-    birthRegistrationNumber: '00123456789012345',
+    shift: 'MORNING',
+    studentInfo: { birthRegistrationNumber: '00123456789012345' },
     nationality: 'Bangladeshi',
     religion: 'Optional',
     emergencyContactName: 'Relative',
@@ -131,14 +134,20 @@ test('personal and emergency fields are optional and registration preserves lead
     medicalNotes: 'Allergy information',
   };
   const parsed = createProspectSchema.parse(input);
-  assert.equal(parsed.birthRegistrationNumber, input.birthRegistrationNumber);
   assert.equal(
-    createProspectSchema.safeParse({ name: input.name }).success,
+    parsed.studentInfo?.birthRegistrationNumber,
+    input.studentInfo.birthRegistrationNumber,
+  );
+  assert.equal(
+    createProspectSchema.safeParse({ name: input.name, shift: input.shift })
+      .success,
     true,
   );
   assert.equal(
-    createProspectSchema.safeParse({ ...input, birthRegistrationNumber: 'ABC' })
-      .success,
+    createProspectSchema.safeParse({
+      ...input,
+      studentInfo: { birthRegistrationNumber: 'ABC' },
+    }).success,
     false,
   );
 });
@@ -161,4 +170,31 @@ test('clients cannot supply or overwrite the admission approver', async () => {
     updateAcademicInfoSchema.safeParse({ admittedById: classId }).success,
     false,
   );
+});
+
+test('saved student edits cannot change identity, role or admission ownership', () => {
+  assert.equal(admitStudentSchema.safeParse({}).success, true);
+  assert.equal(
+    createProspectSchema.safeParse({ name: { firstName: 'A', lastName: 'B' } })
+      .success,
+    false,
+  );
+  assert.equal(
+    updateStudentDraftSchema.safeParse({ phone: '01700000000' }).success,
+    true,
+  );
+  for (const field of [
+    'shift',
+    'role',
+    'userId',
+    'collectedById',
+    'admittedById',
+    'status',
+    'employmentInfo',
+  ]) {
+    assert.equal(
+      updateStudentDraftSchema.safeParse({ [field]: 'unexpected' }).success,
+      false,
+    );
+  }
 });

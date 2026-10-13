@@ -1,20 +1,10 @@
 import { z } from 'zod';
-const fee = z
-  .union([z.string(), z.number()])
-  .transform(String)
-  .pipe(
-    z
-      .string()
-      .regex(
-        /^\d{1,10}(?:\.\d{1,2})?$/,
-        'Fee must be non-negative with at most two decimal places',
-      ),
-  );
+import { moneySchema } from '../../utils/money.validation';
 export const createPaymentInfoSchema = z
   .object({
-    admissionFee: fee,
-    annualFee: fee,
-    monthlyFee: fee,
+    admissionFee: moneySchema,
+    annualFee: moneySchema,
+    monthlyFee: moneySchema,
     academicYear: z.number().int().min(2000).max(2100),
   })
   .strict();

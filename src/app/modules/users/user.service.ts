@@ -1,8 +1,7 @@
+import { studentDetailsData } from '../student/studentInfo.utils';
+import { initialPassword } from '../../utils/initialPassword';
 import { deleteProfile } from '../../utils/deleteProfile';
-import {
-  validatePlacement,
-  admissionDetails,
-} from '../academicInfo/academicInfo.utils';
+import { validatePlacement } from '../academicInfo/academicInfo.utils';
 import { createProfileData } from '../profile/profile.utils';
 import { prisma } from '../../../../prisma/lib/prisma';
 import {
@@ -21,30 +20,36 @@ const createUser = async (
   actorId?: string,
 ) => {
   if (
+    !['SUPER_ADMIN', 'ADMIN'].includes(actorRole) &&
+    !(actorRole === 'TEACHER' && payload.role === 'STUDENT')
+  )
+    throw new AppError(403, 'You cannot create this role');
+  if (payload.role !== 'STUDENT' && !payload.email)
+    throw new AppError(400, 'Email is required for staff accounts');
+  if (
     actorRole !== 'SUPER_ADMIN' &&
     ['SUPER_ADMIN', 'ADMIN'].includes(payload.role)
   )
     throw new AppError(403, 'Only a super admin can create administrators');
-  if (
-    (payload.profile.paymentInfo || payload.profile.academicInfo) &&
-    payload.role !== 'STUDENT'
-  )
-    throw new AppError(400, 'Only students can have payment or academic info');
-  const passwordHash = await hashPassword(payload.password);
+  if (payload.role !== 'STUDENT' && payload.profile.studentInfo)
+    throw new AppError(400, 'Student info is only for students');
+  if (payload.role === 'STUDENT' && payload.profile.employmentInfo)
+    throw new AppError(400, 'Students cannot have employment info');
+  const passwordHash = await hashPassword(initialPassword(payload.password));
   return prisma.$transaction(async (tx) => {
     const userId = await generateUserId(
       tx,
       payload.role,
       payload.profile.shift,
     );
-    const {
-      guardian,
-      localGuardian,
-      image,
-      paymentInfo,
-      academicInfo,
-      ...profile
-    } = payload.profile;
+    const { studentInfo, employmentInfo, ...profile } = payload.profile;
+    const { academicInfo, paymentInfo, ...details } = studentInfo ?? {};
+    if (
+      academicInfo &&
+      paymentInfo &&
+      academicInfo.academicYear !== paymentInfo.academicYear
+    )
+      throw new AppError(400, 'Payment and academic years must match');
     if (academicInfo) await validatePlacement(tx, academicInfo);
     return tx.user.create({
       data: {
@@ -54,24 +59,34 @@ const createUser = async (
         role: payload.role,
         profile: {
           create: {
-            ...createProfileData({
-              ...profile,
-              guardian,
-              localGuardian,
-              image,
-            }),
-            ...(academicInfo
+            ...createProfileData(profile),
+            ...(payload.role === 'STUDENT'
               ? {
-                  academicInfo: {
+                  studentInfo: {
                     create: {
-                      ...academicInfo,
-                      ...admissionDetails(academicInfo),
-                      admittedById: actorId,
+                      ...studentDetailsData(details),
+                      ...(actorId
+                        ? { collectedBy: { connect: { id: actorId } } }
+                        : {}),
+                      academicInfo: {
+                        create: {
+                          ...academicInfo,
+                          admissionDate: null,
+                          admissionYear: null,
+                          admissionStatus: 'PROSPECT',
+                          studentStatus: null,
+                        },
+                      },
+                      ...(paymentInfo
+                        ? { paymentInfo: { create: paymentInfo } }
+                        : {}),
                     },
                   },
                 }
               : {}),
-            ...(paymentInfo ? { paymentInfo: { create: paymentInfo } } : {}),
+            ...(employmentInfo
+              ? { employmentInfo: { create: employmentInfo } }
+              : {}),
           },
         },
       },
@@ -204,6 +219,7 @@ const permanentlyDeleteUser = async (userId: string, actorRole: UserRole) => {
   });
 };
 export const UserServices = {
+  checkManagementRole,
   recycleUser,
   restoreUser,
   permanentlyDeleteUser,

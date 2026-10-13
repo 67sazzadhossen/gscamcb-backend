@@ -1,7 +1,8 @@
 import { z } from 'zod';
+import { userIdSchema } from '../users/user.validation';
 export const loginSchema = z
   .object({
-    identifier: z.string().trim().min(1).max(254),
+    userId: userIdSchema,
     password: z.string().min(1).max(72),
   })
   .strict();

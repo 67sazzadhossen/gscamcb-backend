@@ -18,8 +18,8 @@ enum StudentStatus {
 
 model AcademicInfo {
   id               String          @id @default(uuid()) @db.Uuid
-  profileId        String          @unique @db.Uuid
-  profile          Profile         @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  studentInfoId    String          @unique @db.Uuid
+  studentInfo      StudentInfo     @relation(fields: [studentInfoId], references: [id], onDelete: Cascade)
   admissionClassId String?         @db.Uuid
   admissionClass   Class?          @relation("AdmissionClass", fields: [admissionClassId], references: [id], onDelete: Restrict)
   currentClassId   String?         @db.Uuid

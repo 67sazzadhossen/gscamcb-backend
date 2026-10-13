@@ -3,7 +3,7 @@ import { sendResponse } from '../../utils/sendResponse';
 import { currentUser } from '../../utils/currentUser';
 import { AuthServices } from './auth.service';
 const login = catchAsync(async (req, res) => {
-  const data = await AuthServices.login(req.body.identifier, req.body.password);
+  const data = await AuthServices.login(req.body.userId, req.body.password);
   sendResponse(res, {
     statusCode: 200,
     success: true,

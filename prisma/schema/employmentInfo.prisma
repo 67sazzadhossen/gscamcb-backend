@@ -1,0 +1,23 @@
+enum EmploymentStatus {
+  ACTIVE
+  ON_LEAVE
+  RESIGNED
+  TERMINATED
+}
+
+model EmploymentInfo {
+  id               String           @id @default(uuid()) @db.Uuid
+  profileId        String           @unique @db.Uuid
+  profile          Profile          @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  monthlySalary    Decimal?         @db.Decimal(12, 2)
+  designation      String
+  department       String?
+  joiningDate      DateTime?        @db.Date
+  qualification    String?
+  specialization   String?
+  employmentStatus EmploymentStatus @default(ACTIVE)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@map("employment_info")
+}

@@ -6,13 +6,21 @@ import {
 import { createProfileSchema } from '../profile/profile.validation';
 import { createAcademicInfoSchema } from '../academicInfo/academicInfo.validation';
 import { createPaymentInfoSchema } from '../paymentInfo/paymentInfo.validation';
-const prospectStatuses = z.enum(AdmissionStatus).exclude(['ADMITTED']);
 export const createProspectSchema = createProfileSchema
-  .omit({ shift: true, academicInfo: true, paymentInfo: true })
-  .extend({ shift: z.enum(Shift).optional() })
+  .omit({ employmentInfo: true })
+  .extend({
+    email: z.email().trim().toLowerCase().optional(),
+    password: z.string().min(8).max(72).optional(),
+  })
   .strict();
+export const updateStudentDraftSchema = createProfileSchema
+  .omit({ shift: true, employmentInfo: true })
+  .partial()
+  .extend({ email: z.email().trim().toLowerCase().optional() })
+  .strict()
+  .refine((data) => Object.keys(data).length > 0, 'Provide student details');
 export const updateAdmissionStatusSchema = z
-  .object({ admissionStatus: prospectStatuses })
+  .object({ admissionStatus: z.enum(AdmissionStatus) })
   .strict();
 export const listProspectsSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -21,16 +29,16 @@ export const listProspectsSchema = z.object({
 });
 export const admitStudentSchema = z
   .object({
-    email: z.email().trim().toLowerCase(),
-    password: z.string().min(8).max(72).optional(),
-    shift: z.enum(Shift),
-    academicInfo: createAcademicInfoSchema,
+    email: z.email().trim().toLowerCase().optional(),
+    shift: z.enum(Shift).optional(),
+    academicInfo: createAcademicInfoSchema.optional(),
     paymentInfo: createPaymentInfoSchema.optional(),
   })
   .strict()
   .refine(
     (data) =>
       !data.paymentInfo ||
+      !data.academicInfo ||
       data.paymentInfo.academicYear === data.academicInfo.academicYear,
     'Payment and academic years must match',
   );

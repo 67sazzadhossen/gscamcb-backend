@@ -1,3 +1,4 @@
+import { EmploymentInfoRoutes } from '../modules/employmentInfo/employmentInfo.route';
 import { WaiverRoutes } from '../modules/waiver/waiver.route';
 import { StudentRoutes } from '../modules/student/student.route';
 import { ClassRoutes } from '../modules/class/class.route';
@@ -11,6 +12,7 @@ import { AuthRoutes } from '../modules/auth/auth.route';
 import { HealthRoutes } from '../modules/health/health.route';
 const router = Router();
 const moduleRoutes = [
+  { path: '/employment-info', route: EmploymentInfoRoutes },
   { path: '/waivers', route: WaiverRoutes },
   { path: '/students', route: StudentRoutes },
   { path: '/classes', route: ClassRoutes },

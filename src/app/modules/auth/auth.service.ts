@@ -4,16 +4,26 @@ import config from '../../config';
 import { AppError } from '../../errors/AppError';
 import { hashPassword, verifyPassword } from '../../utils/password';
 import { userSelect } from '../users/user.const';
-const login = async (identifier: string, password: string) => {
-  const user = await prisma.user.findFirst({
-    where: {
-      OR: [{ userId: identifier }, { email: identifier.toLowerCase() }],
+const login = async (userId: string, password: string) => {
+  const user = await prisma.user.findUnique({
+    include: {
+      profile: {
+        select: {
+          studentInfo: {
+            select: { academicInfo: { select: { admissionStatus: true } } },
+          },
+        },
+      },
     },
+    where: { userId },
   });
   if (
     !user ||
     user.isDeleted ||
     user.status !== 'ACTIVE' ||
+    (user.role === 'STUDENT' &&
+      user.profile?.studentInfo?.academicInfo?.admissionStatus !==
+        'ADMITTED') ||
     !(await verifyPassword(password, user.passwordHash))
   )
     throw new AppError(401, 'Invalid credentials');

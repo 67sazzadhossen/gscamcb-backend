@@ -22,7 +22,6 @@ test('addresses normalize formatting and replace the duplicate raw profile field
     updateProfileSchema.safeParse({
       presentAddress: { addressLine: 'Present' },
       permanentAddress: { addressLine: 'Permanent' },
-      usesTransport: false,
     }).success,
     true,
   );
@@ -35,9 +34,11 @@ test('addresses normalize formatting and replace the duplicate raw profile field
       name: { firstName: 'Student', lastName: 'Name' },
       shift: 'MORNING',
       presentAddress: { addressLine: 'Home' },
-      guardian: {
-        name: { firstName: 'Parent', lastName: 'Name' },
-        address: { addressLine: 'Home' },
+      studentInfo: {
+        guardian: {
+          name: { firstName: 'Parent', lastName: 'Name' },
+          address: { addressLine: 'Home' },
+        },
       },
     }).success,
     true,

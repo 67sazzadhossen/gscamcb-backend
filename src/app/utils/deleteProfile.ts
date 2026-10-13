@@ -6,20 +6,22 @@ export const deleteProfile = async (
     nameId: string;
     presentAddressId?: string | null;
     permanentAddressId?: string | null;
-    guardian: { nameId: string; addressId?: string | null } | null;
-    localGuardian: { nameId: string; addressId?: string | null } | null;
+    studentInfo?: {
+      guardian: { nameId: string; addressId?: string | null } | null;
+      localGuardian: { nameId: string; addressId?: string | null } | null;
+    } | null;
   },
 ) => {
   const ids = [
     profile.nameId,
-    profile.guardian?.nameId,
-    profile.localGuardian?.nameId,
+    profile.studentInfo?.guardian?.nameId,
+    profile.studentInfo?.localGuardian?.nameId,
   ].filter((id): id is string => Boolean(id));
   const addressIds = [
     profile.presentAddressId,
     profile.permanentAddressId,
-    profile.guardian?.addressId,
-    profile.localGuardian?.addressId,
+    profile.studentInfo?.guardian?.addressId,
+    profile.studentInfo?.localGuardian?.addressId,
   ].filter((id): id is string => Boolean(id));
   await tx.profile.delete({ where: { id: profile.id } });
   await tx.name.deleteMany({

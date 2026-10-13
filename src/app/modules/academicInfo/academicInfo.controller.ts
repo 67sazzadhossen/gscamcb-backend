@@ -1,4 +1,3 @@
-import { currentUser } from '../../utils/currentUser';
 import catchAsync from '../../utils/catchAsync';
 import { sendResponse } from '../../utils/sendResponse';
 import { userIdSchema } from '../users/user.validation';
@@ -18,7 +17,6 @@ const createAcademicInfo = catchAsync(async (req, res) => {
   const data = await AcademicInfoServices.createAcademicInfo(
     userIdSchema.parse(req.params.userId),
     req.body,
-    currentUser(req).id,
   );
   sendResponse(res, {
     statusCode: 201,

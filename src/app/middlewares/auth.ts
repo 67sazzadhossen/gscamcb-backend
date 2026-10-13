@@ -30,9 +30,22 @@ export const auth = (...roles: UserRole[]) =>
         status: true,
         isDeleted: true,
         mustChangePassword: true,
+        profile: {
+          select: {
+            studentInfo: {
+              select: { academicInfo: { select: { admissionStatus: true } } },
+            },
+          },
+        },
       },
     });
-    if (!user || user.isDeleted || user.status !== 'ACTIVE')
+    if (
+      !user ||
+      user.isDeleted ||
+      user.status !== 'ACTIVE' ||
+      (user.role === 'STUDENT' &&
+        user.profile?.studentInfo?.academicInfo?.admissionStatus !== 'ADMITTED')
+    )
       throw new AppError(401, 'Account is unavailable');
     if (roles.length && !roles.includes(user.role))
       throw new AppError(403, 'You do not have permission for this action');

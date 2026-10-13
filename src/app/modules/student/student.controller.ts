@@ -54,9 +54,9 @@ const admitStudent = catchAsync(async (req, res) => {
     currentUser(req),
   );
   sendResponse(res, {
-    statusCode: 201,
+    statusCode: 200,
     success: true,
-    message: 'Student admitted and account created',
+    message: 'Student admission confirmed',
     data,
   });
 });
@@ -134,7 +134,54 @@ const recycleBin = catchAsync(async (req, res) => {
     data,
   });
 });
+const collectionSummary = catchAsync(async (req, res) => {
+  const teacherId = req.params.teacherId
+    ? z
+        .string()
+        .regex(/^\d{8}$/)
+        .parse(req.params.teacherId)
+    : undefined;
+  const data = await StudentServices.collectionSummary(
+    currentUser(req),
+    teacherId,
+  );
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: 'Collection summary retrieved',
+    data,
+  });
+});
+const updateStudentDraft = catchAsync(async (req, res) => {
+  const data = await StudentServices.updateStudentDraft(
+    id.parse(req.params.profileId),
+    req.body,
+    currentUser(req),
+  );
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: 'Student draft updated',
+    data,
+  });
+});
+const updateStudentInfo = catchAsync(async (req, res) => {
+  const data = await StudentServices.updateStudentInfo(
+    id.parse(req.params.profileId),
+    req.body,
+    currentUser(req),
+  );
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: 'Student information updated',
+    data,
+  });
+});
 export const StudentControllers = {
+  updateStudentInfo,
+  updateStudentDraft,
+  collectionSummary,
   recycleStudent,
   restoreStudent,
   permanentlyDeleteStudent,

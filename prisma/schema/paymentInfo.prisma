@@ -1,13 +1,13 @@
 model PaymentInfo {
-  id           String   @id @default(uuid()) @db.Uuid
-  profileId    String   @unique @db.Uuid
-  profile      Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  admissionFee Decimal  @db.Decimal(12, 2)
-  annualFee    Decimal  @db.Decimal(12, 2)
-  monthlyFee   Decimal  @db.Decimal(12, 2)
-  academicYear Int
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id            String      @id @default(uuid()) @db.Uuid
+  studentInfoId String      @unique @db.Uuid
+  studentInfo   StudentInfo @relation(fields: [studentInfoId], references: [id], onDelete: Cascade)
+  admissionFee  Decimal     @db.Decimal(12, 2)
+  annualFee     Decimal     @db.Decimal(12, 2)
+  monthlyFee    Decimal     @db.Decimal(12, 2)
+  academicYear  Int
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
   @@map("payment_info")
 }

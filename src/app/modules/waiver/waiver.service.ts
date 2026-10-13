@@ -9,13 +9,13 @@ const createWaiver = async (
 ) => {
   const profile = await getStudentProfile(userId);
   return prisma.waiver.create({
-    data: { profileId: profile.id, requestedById, ...payload },
+    data: { studentInfoId: profile.id, requestedById, ...payload },
   });
 };
 const listWaivers = async (userId: string) => {
   const profile = await getStudentProfile(userId);
   return prisma.waiver.findMany({
-    where: { profileId: profile.id },
+    where: { studentInfoId: profile.id },
     orderBy: { createdAt: 'desc' },
   });
 };
@@ -28,14 +28,25 @@ const decideWaiver = (
     const waiver = await tx.waiver.findUnique({
       where: { id },
       include: {
-        profile: {
-          select: { isDeleted: true, user: { select: { isDeleted: true } } },
+        studentInfo: {
+          include: {
+            profile: {
+              select: {
+                isDeleted: true,
+                user: { select: { isDeleted: true } },
+              },
+            },
+          },
         },
       },
     });
-    if (!waiver || waiver.profile.isDeleted || waiver.profile.user?.isDeleted)
+    if (
+      !waiver ||
+      waiver.studentInfo.profile.isDeleted ||
+      waiver.studentInfo.profile.user?.isDeleted
+    )
       throw new AppError(404, 'Waiver not found');
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${waiver.profileId + waiver.feeType}))::text`;
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${waiver.studentInfoId + waiver.feeType}))::text`;
     const current = await tx.waiver.findUniqueOrThrow({ where: { id } });
     if (
       payload.status === 'REVOKED'
@@ -47,7 +58,7 @@ const decideWaiver = (
       const overlapping = await tx.waiver.findFirst({
         where: {
           id: { not: id },
-          profileId: current.profileId,
+          studentInfoId: current.studentInfoId,
           feeType: current.feeType,
           status: 'APPROVED',
           ...(current.endDate ? { startDate: { lte: current.endDate } } : {}),

@@ -26,7 +26,7 @@ const createPaymentInfo = async (
   if (profile.paymentInfo)
     throw new AppError(409, 'Student payment info already exists');
   return prisma.paymentInfo.create({
-    data: { profileId: profile.id, ...payload },
+    data: { studentInfoId: profile.id, ...payload },
   });
 };
 export const PaymentInfoServices = {

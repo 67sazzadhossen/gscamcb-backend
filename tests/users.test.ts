@@ -127,15 +127,20 @@ test('guardians reuse the nested name schema and retain addresses', () => {
     profile: {
       name: { firstName: 'Student', lastName: 'Name' },
       shift: 'MORNING',
-      guardian,
-      localGuardian: { ...guardian, relationship: 'Uncle' },
+      studentInfo: {
+        guardian,
+        localGuardian: { ...guardian, relationship: 'Uncle' },
+      },
     },
   };
   assert.equal(createUserSchema.safeParse(payload).success, true);
   assert.equal(
     createUserSchema.safeParse({
       ...payload,
-      profile: { ...payload.profile, guardian: { phone: '01700000000' } },
+      profile: {
+        ...payload.profile,
+        studentInfo: { guardian: { phone: '01700000000' } },
+      },
     }).success,
     false,
   );
@@ -148,8 +153,7 @@ test('version, cadet status, and Cloudinary image metadata are validated', () =>
     profile: {
       name: { firstName: 'Student', lastName: 'Name' },
       shift: 'MORNING',
-      version: 'ENGLISH',
-      isCadet: true,
+      studentInfo: { version: 'ENGLISH', isCadet: true },
       image: {
         displayUrl: 'https://res.cloudinary.com/school/image/upload/photo.webp',
         publicId: 'school/photo',
@@ -160,21 +164,24 @@ test('version, cadet status, and Cloudinary image metadata are validated', () =>
   assert.equal(
     createUserSchema.safeParse({
       ...payload,
-      profile: { ...payload.profile, version: 'BANGLA', isCadet: false },
+      profile: {
+        ...payload.profile,
+        studentInfo: { version: 'BANGLA', isCadet: false },
+      },
     }).success,
     true,
   );
   assert.equal(
     createUserSchema.safeParse({
       ...payload,
-      profile: { ...payload.profile, version: 'OTHER' },
+      profile: { ...payload.profile, studentInfo: { version: 'OTHER' } },
     }).success,
     false,
   );
   assert.equal(
     createUserSchema.safeParse({
       ...payload,
-      profile: { ...payload.profile, isCadet: 'false' },
+      profile: { ...payload.profile, studentInfo: { isCadet: 'false' } },
     }).success,
     false,
   );

@@ -1,12 +1,14 @@
+import { studentInfoInclude } from './studentInfo.const';
+import { studentDetailsData } from './studentInfo.utils';
 import { UserServices } from '../users/user.service';
 import { deleteProfile } from '../../utils/deleteProfile';
 import { prisma } from '../../../../prisma/lib/prisma';
 import { AppError } from '../../errors/AppError';
-import config from '../../config';
+import { initialPassword } from '../../utils/initialPassword';
 import { hashPassword } from '../../utils/password';
 import { generateUserId } from '../../utils/generateUserId';
+import { updateProfileData } from '../profile/profile.utils';
 import { profileInclude } from '../profile/profile.const';
-import { createProfileData } from '../profile/profile.utils';
 import {
   validatePlacement,
   admissionDetails,
@@ -14,12 +16,26 @@ import {
 import { userSelect } from '../users/user.const';
 import { listProspectsSchema } from './student.validation';
 import {
+  TUpdateStudentDraft,
+  TUpdateStudentInfo,
   TCreateProspect,
   TAdmitStudent,
   THomeVisit,
   TActor,
 } from './student.interface';
 import { AdmissionStatus } from '../../../../prisma/generated/prisma/client';
+const studentInclude = {
+  ...profileInclude,
+  user: {
+    select: {
+      id: true,
+      role: true,
+      userId: true,
+      email: true,
+      isDeleted: true,
+    },
+  },
+} as const;
 const accessibleStudent = async (
   profileId: string,
   actor: TActor,
@@ -27,31 +43,39 @@ const accessibleStudent = async (
 ) => {
   const profile = await prisma.profile.findUnique({
     where: { id: profileId },
-    include: {
-      ...profileInclude,
-      user: { select: { role: true, userId: true, isDeleted: true } },
-    },
+    include: studentInclude,
   });
   if (
     !profile ||
     (!includeDeleted && (profile.isDeleted || profile.user?.isDeleted)) ||
-    !profile.academicInfo ||
+    !profile.studentInfo?.academicInfo ||
     (profile.user && profile.user.role !== 'STUDENT')
   )
     throw new AppError(404, 'Student not found');
-  if (actor.role === 'TEACHER' && profile.collectedById !== actor.id)
+  if (
+    actor.role === 'TEACHER' &&
+    profile.studentInfo!.collectedById !== actor.id
+  )
     throw new AppError(403, 'You can only manage students you collected');
   return profile;
 };
-const createProspect = (payload: TCreateProspect, actor: TActor) =>
-  prisma.profile.create({
-    data: {
-      ...createProfileData(payload),
-      collectedBy: { connect: { id: actor.id } },
-      academicInfo: { create: { admissionStatus: 'PROSPECT' } },
+const createProspect = async (payload: TCreateProspect, actor: TActor) => {
+  const { email, password, ...profile } = payload;
+  const user = await UserServices.createUser(
+    { email, password, role: 'STUDENT', profile },
+    actor.role,
+    actor.id,
+  );
+  return {
+    ...user.profile!,
+    user: {
+      id: user.id,
+      userId: user.userId,
+      email: user.email,
+      role: user.role,
     },
-    include: profileInclude,
-  });
+  };
+};
 const listProspects = async (
   query: unknown,
   actor: TActor,
@@ -59,8 +83,12 @@ const listProspects = async (
 ) => {
   const { page, limit, admissionStatus } = listProspectsSchema.parse(query);
   const where = {
-    ...(actor.role === 'TEACHER' ? { collectedById: actor.id } : {}),
-    academicInfo: { is: { admissionStatus } },
+    studentInfo: {
+      is: {
+        ...(actor.role === 'TEACHER' ? { collectedById: actor.id } : {}),
+        academicInfo: { is: { admissionStatus } },
+      },
+    },
     AND: deleted
       ? [{ OR: [{ isDeleted: true }, { user: { is: { isDeleted: true } } }] }]
       : [
@@ -74,7 +102,7 @@ const listProspects = async (
   const [data, total] = await prisma.$transaction([
     prisma.profile.findMany({
       where,
-      include: profileInclude,
+      include: studentInclude,
       skip: (page - 1) * limit,
       take: limit,
       orderBy: { createdAt: 'desc' },
@@ -90,20 +118,22 @@ const updateAdmissionStatus = async (
   status: AdmissionStatus,
   actor: TActor,
 ) => {
+  if (status === 'ADMITTED') return admitStudent(profileId, {}, actor);
   const profile = await accessibleStudent(profileId, actor);
-  if (profile.userId || profile.academicInfo!.admissionStatus === 'ADMITTED')
+  if (profile.studentInfo!.academicInfo!.admissionStatus === 'ADMITTED')
     throw new AppError(400, 'Use student status for admitted students');
   const changed = await prisma.academicInfo.updateMany({
     where: {
-      profileId,
+      studentInfoId: profile.studentInfo!.id,
       admissionStatus: { not: 'ADMITTED' },
-      profile: { userId: null },
     },
     data: { admissionStatus: status },
   });
   if (changed.count !== 1)
     throw new AppError(409, 'Admission state changed; refresh the student');
-  return prisma.academicInfo.findUniqueOrThrow({ where: { profileId } });
+  return prisma.academicInfo.findUniqueOrThrow({
+    where: { studentInfoId: profile.studentInfo!.id },
+  });
 };
 const admitStudent = async (
   profileId: string,
@@ -113,59 +143,273 @@ const admitStudent = async (
   if (!['SUPER_ADMIN', 'ADMIN'].includes(actor.role))
     throw new AppError(403, 'Only administrators can admit students');
   await accessibleStudent(profileId, actor);
-  const password = payload.password ?? config.default_password;
-  if (!password) throw new AppError(400, 'Provide an initial password');
-  const passwordHash = await hashPassword(password);
   return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM profiles WHERE id = ${profileId}::uuid FOR UPDATE`;
     const profile = await tx.profile.findUniqueOrThrow({
       where: { id: profileId },
-      include: { academicInfo: true },
+      include: studentInclude,
     });
-    if (profile.userId || profile.academicInfo?.admissionStatus === 'ADMITTED')
+    const stored = profile.studentInfo?.academicInfo;
+    if (!stored || stored.admissionStatus === 'ADMITTED')
       throw new AppError(409, 'Student is already admitted');
-    await validatePlacement(tx, payload.academicInfo);
-    const userId = await generateUserId(tx, 'STUDENT', payload.shift);
-    const account = await tx.user.create({
-      data: { userId, email: payload.email, passwordHash, role: 'STUDENT' },
+    if (profile.isDeleted || profile.user?.isDeleted)
+      throw new AppError(404, 'Student not found');
+    const placement = payload.academicInfo ?? stored;
+    const fees = payload.paymentInfo ?? profile.studentInfo?.paymentInfo;
+    const shift = payload.shift ?? profile.shift;
+    if (
+      !shift ||
+      !placement.admissionClassId ||
+      !placement.currentClassId ||
+      placement.academicYear === null
+    )
+      throw new AppError(
+        400,
+        'Complete shift, classes and academic year before admission',
+      );
+    if (profile.user && payload.shift && profile.shift !== payload.shift)
+      throw new AppError(
+        400,
+        'Shift cannot change during admission; the student ID is already assigned',
+      );
+    if (!fees)
+      throw new AppError(
+        400,
+        'Complete admission, annual and monthly fee settings before admission',
+      );
+    if (fees.academicYear !== placement.academicYear)
+      throw new AppError(400, 'Payment and academic years must match');
+    await validatePlacement(tx, {
+      admissionClassId: placement.admissionClassId,
+      currentClassId: placement.currentClassId,
+      sectionId: placement.sectionId,
     });
-    const connected = await tx.profile.updateMany({
-      where: { id: profileId, userId: null },
-      data: { userId: account.id, shift: payload.shift },
+    let accountId = profile.userId;
+    if (!accountId) {
+      const userId = await generateUserId(tx, 'STUDENT', shift);
+      const account = await tx.user.create({
+        data: {
+          userId,
+          email: payload.email,
+          passwordHash: await hashPassword(initialPassword()),
+          role: 'STUDENT',
+        },
+      });
+      accountId = account.id;
+      await tx.profile.update({
+        where: { id: profileId },
+        data: { userId: accountId, shift },
+      });
+    } else if (payload.email)
+      await tx.user.update({
+        where: { id: accountId },
+        data: { email: payload.email },
+      });
+    const dates = admissionDetails({
+      admissionDate: placement.admissionDate ?? undefined,
+      admissionYear: placement.admissionYear ?? undefined,
     });
-    if (connected.count !== 1)
-      throw new AppError(409, 'Student is already admitted');
     await tx.academicInfo.update({
-      where: { profileId },
+      where: { studentInfoId: profile.studentInfo!.id },
       data: {
-        ...payload.academicInfo,
-        ...admissionDetails(payload.academicInfo),
+        admissionClassId: placement.admissionClassId,
+        currentClassId: placement.currentClassId,
+        sectionId: placement.sectionId,
+        rollNumber: placement.rollNumber,
+        academicYear: placement.academicYear,
+        ...dates,
         admittedById: actor.id,
       },
     });
     if (payload.paymentInfo)
-      await tx.paymentInfo.create({
-        data: { profileId, ...payload.paymentInfo },
+      await tx.paymentInfo.upsert({
+        where: { studentInfoId: profile.studentInfo!.id },
+        create: {
+          studentInfoId: profile.studentInfo!.id,
+          ...payload.paymentInfo,
+        },
+        update: payload.paymentInfo,
       });
     return tx.user.findUniqueOrThrow({
-      where: { id: account.id },
+      where: { id: accountId },
       select: userSelect,
     });
   });
+};
+const updateStudentDraft = async (
+  profileId: string,
+  payload: TUpdateStudentDraft,
+  actor: TActor,
+) => {
+  await accessibleStudent(profileId, actor);
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM profiles WHERE id = ${profileId}::uuid FOR UPDATE`;
+    const current = await tx.profile.findUniqueOrThrow({
+      where: { id: profileId },
+      include: studentInclude,
+    });
+    if (current.isDeleted || current.user?.isDeleted)
+      throw new AppError(404, 'Student not found');
+    if (current.studentInfo?.academicInfo?.admissionStatus === 'ADMITTED')
+      throw new AppError(400, 'Use management endpoints for admitted students');
+    const { studentInfo, email, ...profile } = payload;
+    const { academicInfo, paymentInfo, ...details } = studentInfo ?? {};
+    const year =
+      academicInfo?.academicYear ??
+      current.studentInfo?.academicInfo?.academicYear;
+    const feeYear =
+      paymentInfo?.academicYear ??
+      current.studentInfo?.paymentInfo?.academicYear;
+    if (year != null && feeYear != null && year !== feeYear)
+      throw new AppError(400, 'Payment and academic years must match');
+    if (academicInfo) await validatePlacement(tx, academicInfo);
+    if (email && current.userId)
+      await tx.user.update({ where: { id: current.userId }, data: { email } });
+    return tx.profile.update({
+      where: { id: profileId },
+      data: {
+        ...updateProfileData(profile),
+        ...(studentInfo
+          ? {
+              studentInfo: {
+                update: {
+                  ...studentDetailsData(details, true),
+                  ...(academicInfo
+                    ? {
+                        academicInfo: {
+                          upsert: {
+                            create: {
+                              ...academicInfo,
+                              admissionDate: null,
+                              admissionYear: null,
+                              admissionStatus: 'PROSPECT',
+                              studentStatus: null,
+                            },
+                            update: {
+                              ...academicInfo,
+                              admissionDate: null,
+                              admissionYear: null,
+                              studentStatus: null,
+                            },
+                          },
+                        },
+                      }
+                    : {}),
+                  ...(paymentInfo
+                    ? {
+                        paymentInfo: {
+                          upsert: { create: paymentInfo, update: paymentInfo },
+                        },
+                      }
+                    : {}),
+                },
+              },
+            }
+          : {}),
+      },
+      include: studentInclude,
+    });
+  });
+};
+const updateStudentInfo = async (
+  profileId: string,
+  payload: TUpdateStudentInfo,
+  actor: TActor,
+) => {
+  await accessibleStudent(profileId, actor);
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM profiles WHERE id = ${profileId}::uuid FOR UPDATE`;
+    const profile = await tx.profile.findUniqueOrThrow({
+      where: { id: profileId },
+      include: studentInclude,
+    });
+    if (profile.isDeleted || profile.user?.isDeleted || !profile.studentInfo)
+      throw new AppError(404, 'Student not found');
+    if (
+      actor.role === 'TEACHER' &&
+      (profile.studentInfo.collectedById !== actor.id ||
+        profile.studentInfo.academicInfo?.admissionStatus === 'ADMITTED')
+    )
+      throw new AppError(
+        403,
+        'Only administrators can edit admitted student information',
+      );
+    return tx.studentInfo.update({
+      where: { id: profile.studentInfo.id },
+      data: studentDetailsData(payload, true),
+      include: studentInfoInclude,
+    });
+  });
+};
+const collectionSummary = async (actor: TActor, teacherUserId?: string) => {
+  let collectorId = actor.id;
+  if (teacherUserId) {
+    if (!['SUPER_ADMIN', 'ADMIN'].includes(actor.role))
+      throw new AppError(403, 'Only administrators can view another teacher');
+    const teacher = await prisma.user.findUnique({
+      where: { userId: teacherUserId },
+    });
+    if (!teacher || teacher.role !== 'TEACHER' || teacher.isDeleted)
+      throw new AppError(404, 'Teacher not found');
+    collectorId = teacher.id;
+  }
+  const groups = await prisma.academicInfo.groupBy({
+    by: ['admissionStatus'],
+    where: {
+      studentInfo: {
+        is: {
+          collectedById: collectorId,
+          profile: {
+            is: {
+              isDeleted: false,
+              user: { is: { role: 'STUDENT', isDeleted: false } },
+            },
+          },
+        },
+      },
+    },
+    _count: { _all: true },
+  });
+  const statusCounts = Object.fromEntries(
+    Object.values(AdmissionStatus).map((status) => [
+      status,
+      groups.find((group) => group.admissionStatus === status)?._count._all ??
+        0,
+    ]),
+  );
+  const totalCollected = groups.reduce(
+    (sum, group) => sum + group._count._all,
+    0,
+  );
+  return {
+    totalCollected,
+    totalAdmitted: statusCounts.ADMITTED,
+    pending:
+      statusCounts.PROSPECT +
+      statusCounts.FOLLOW_UP +
+      statusCounts.INTERESTED +
+      statusCounts.APPLIED,
+    statusCounts,
+  };
 };
 const addHomeVisit = async (
   profileId: string,
   payload: THomeVisit,
   actor: TActor,
 ) => {
-  await accessibleStudent(profileId, actor);
+  const profile = await accessibleStudent(profileId, actor);
   return prisma.homeVisit.create({
-    data: { profileId, visitedById: actor.id, ...payload },
+    data: {
+      studentInfoId: profile.studentInfo!.id,
+      visitedById: actor.id,
+      ...payload,
+    },
   });
 };
 const listHomeVisits = async (profileId: string, actor: TActor) => {
-  await accessibleStudent(profileId, actor);
+  const profile = await accessibleStudent(profileId, actor);
   return prisma.homeVisit.findMany({
-    where: { profileId },
+    where: { studentInfoId: profile.studentInfo!.id },
     include: {
       visitedBy: {
         select: { id: true, userId: true, profile: { select: { name: true } } },
@@ -186,7 +430,7 @@ const recycleStudent = async (profileId: string, actor: TActor) => {
   return prisma.profile.update({
     where: { id: profileId },
     data: { isDeleted: true, deletedAt: new Date() },
-    include: profileInclude,
+    include: studentInclude,
   });
 };
 const restoreStudent = async (profileId: string, actor: TActor) => {
@@ -213,7 +457,7 @@ const permanentlyDeleteStudent = async (profileId: string, actor: TActor) => {
     await tx.$queryRaw`SELECT id FROM profiles WHERE id = ${profileId}::uuid FOR UPDATE`;
     const current = await tx.profile.findUniqueOrThrow({
       where: { id: profileId },
-      include: profileInclude,
+      include: studentInclude,
     });
     if (!current.isDeleted || current.userId)
       throw new AppError(
@@ -225,6 +469,9 @@ const permanentlyDeleteStudent = async (profileId: string, actor: TActor) => {
   });
 };
 export const StudentServices = {
+  updateStudentInfo,
+  updateStudentDraft,
+  collectionSummary,
   recycleStudent,
   restoreStudent,
   permanentlyDeleteStudent,

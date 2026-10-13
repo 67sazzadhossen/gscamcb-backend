@@ -41,17 +41,10 @@ export const updatePerson = <
 
 type TPersonProfile = Omit<
   z.infer<typeof createProfileSchema>,
-  'shift' | 'academicInfo' | 'paymentInfo'
+  'shift' | 'studentInfo' | 'employmentInfo'
 > & { shift?: Shift };
 export const createProfileData = (payload: TPersonProfile) => {
-  const {
-    guardian,
-    localGuardian,
-    image,
-    presentAddress,
-    permanentAddress,
-    ...profile
-  } = payload;
+  const { image, presentAddress, permanentAddress, ...profile } = payload;
   return {
     ...createPerson(profile),
     ...(presentAddress
@@ -61,9 +54,22 @@ export const createProfileData = (payload: TPersonProfile) => {
       ? { permanentAddress: addressRelation(permanentAddress) }
       : {}),
     ...(image ? { image: { create: image } } : {}),
-    ...(guardian ? { guardian: { create: createPerson(guardian) } } : {}),
-    ...(localGuardian
-      ? { localGuardian: { create: createPerson(localGuardian) } }
+  };
+};
+
+export const updateProfileData = (
+  payload: import('./profile.interface').TUpdateProfile,
+) => {
+  const { name, image, presentAddress, permanentAddress, ...profile } = payload;
+  return {
+    ...profile,
+    ...(presentAddress
+      ? { presentAddress: addressRelation(presentAddress) }
       : {}),
+    ...(permanentAddress
+      ? { permanentAddress: addressRelation(permanentAddress) }
+      : {}),
+    ...(name ? { name: { update: name } } : {}),
+    ...(image ? { image: { upsert: { create: image, update: image } } } : {}),
   };
 };

@@ -1,5 +1,5 @@
 import { academicInfoInclude } from './academicInfo.const';
-import { validatePlacement, admissionDetails } from './academicInfo.utils';
+import { validatePlacement } from './academicInfo.utils';
 import { prisma } from '../../../../prisma/lib/prisma';
 import { AppError } from '../../errors/AppError';
 import { getStudentProfile } from '../../utils/studentProfile';
@@ -17,19 +17,31 @@ const getAcademicInfo = async (userId: string) => {
 const createAcademicInfo = async (
   userId: string,
   payload: TCreateAcademicInfo,
-  actorId: string,
 ) => {
   const profile = await getStudentProfile(userId);
-  if (profile.academicInfo)
-    throw new AppError(409, 'Academic info already exists');
   return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM profiles WHERE id = ${profile.profile.id}::uuid FOR UPDATE`;
+    const current = await tx.academicInfo.findUnique({
+      where: { studentInfoId: profile.id },
+    });
+    if (current?.admissionStatus === 'ADMITTED')
+      throw new AppError(409, 'Academic info already exists');
     await validatePlacement(tx, payload);
-    return tx.academicInfo.create({
-      data: {
-        profileId: profile.id,
+    return tx.academicInfo.upsert({
+      where: { studentInfoId: profile.id },
+      create: {
+        studentInfoId: profile.id,
         ...payload,
-        ...admissionDetails(payload),
-        admittedById: actorId,
+        admissionDate: null,
+        admissionYear: null,
+        admissionStatus: 'PROSPECT',
+        studentStatus: null,
+      },
+      update: {
+        ...payload,
+        admissionDate: null,
+        admissionYear: null,
+        studentStatus: null,
       },
       include: academicInfoInclude,
     });
@@ -44,8 +56,11 @@ const updateAcademicInfo = async (
     const current = await tx.academicInfo.findUniqueOrThrow({
       where: { id: info.id },
     });
-    if (!current.currentClassId)
-      throw new AppError(400, 'Admit the student before editing placement');
+    if (payload.studentStatus && current.admissionStatus !== 'ADMITTED')
+      throw new AppError(
+        400,
+        'Admit the student before setting enrollment status',
+      );
     const classChanged =
       payload.currentClassId !== undefined &&
       payload.currentClassId !== current.currentClassId;
@@ -64,10 +79,14 @@ const updateAcademicInfo = async (
             ? null
             : current.rollNumber,
     };
-    await validatePlacement(tx, {
-      currentClassId: payload.currentClassId ?? current.currentClassId,
-      sectionId: data.sectionId,
-    });
+    const classId = payload.currentClassId ?? current.currentClassId;
+    if (classId)
+      await validatePlacement(tx, {
+        currentClassId: classId,
+        sectionId: data.sectionId,
+      });
+    else if (data.sectionId || data.rollNumber)
+      throw new AppError(400, 'Select the current class first');
     return tx.academicInfo.update({
       where: { id: info.id },
       data,
@@ -79,7 +98,7 @@ const promoteStudent = async (userId: string, payload: TPromoteStudent) => {
   const profile = await getStudentProfile(userId);
   return prisma.$transaction(async (tx) => {
     const info = await tx.academicInfo.findUnique({
-      where: { profileId: profile.id },
+      where: { studentInfoId: profile.id },
     });
     if (!info) throw new AppError(404, 'Student academic info not found');
     if (
@@ -109,7 +128,7 @@ const promoteStudent = async (userId: string, payload: TPromoteStudent) => {
         'Student was already promoted; refresh the record',
       );
     const fees = await tx.paymentInfo.findUnique({
-      where: { profileId: profile.id },
+      where: { studentInfoId: profile.id },
     });
     if (payload.paymentInfo && !fees)
       throw new AppError(
@@ -122,10 +141,14 @@ const promoteStudent = async (userId: string, payload: TPromoteStudent) => {
         data: { ...payload.paymentInfo, academicYear: payload.academicYear },
       });
     return tx.profile.findUniqueOrThrow({
-      where: { id: profile.id },
+      where: { id: profile.profile.id },
       include: {
-        academicInfo: { include: academicInfoInclude },
-        paymentInfo: true,
+        studentInfo: {
+          include: {
+            academicInfo: { include: academicInfoInclude },
+            paymentInfo: true,
+          },
+        },
       },
     });
   });

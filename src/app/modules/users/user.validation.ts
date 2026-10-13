@@ -7,12 +7,24 @@ import {
 import { createProfileSchema } from '../profile/profile.validation';
 export const createUserSchema = z
   .object({
-    email: z.email().trim().toLowerCase(),
-    password: z.string().min(8).max(72),
+    email: z.email().trim().toLowerCase().optional(),
+    password: z.string().min(8).max(72).optional(),
     role: z.enum(UserRole),
     profile: createProfileSchema,
   })
-  .strict();
+  .strict()
+  .refine(
+    (data) => data.role === 'STUDENT' || Boolean(data.email),
+    'Email is required for staff accounts',
+  )
+  .refine(
+    (data) => data.role !== 'STUDENT' || !data.profile.employmentInfo,
+    'Students cannot have employment info',
+  )
+  .refine(
+    (data) => data.role === 'STUDENT' || !data.profile.studentInfo,
+    'Student info is only for students',
+  );
 export const updateUserSchema = z
   .object({
     email: z.email().trim().toLowerCase().optional(),
