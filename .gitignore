@@ -6,3 +6,5 @@ dist/
 prisma/generated/
 coverage/
 *.log
+
+.vercel/

@@ -75,3 +75,15 @@ This setup contains a health module and a minimal User schema. Authentication, p
 ## Dependency audit
 
 The online npm audit during setup reported four high-severity advisories in the Prisma 6 CLI/config development dependency chain (`prisma`, `@prisma/config`, `effect`, and `deepmerge-ts`). The suggested automatic fix downgrades Prisma to 6.12, so it was not applied. Review a compatible patched Prisma release before deployment; keep CLI dependencies out of the runtime installation where practical. Recheck with `npm audit` when upgrading dependencies.
+
+## Vercel deployment
+
+Import the `gscamcb-backend` GitHub repository into Vercel using the Express preset. The checked-in `vercel.json` runs `npm ci` and `npm run build`, generating Prisma before compiling. Node.js is pinned to 22.x. Vercel uses the exported app in `src/app.ts`; `src/server.ts` remains the local server entry point.
+
+Set these environment variables in Vercel before deploying:
+
+- `DATABASE_URL`: your Neon PostgreSQL connection URL with SSL enabled.
+- `NODE_ENV`: `production`.
+- `CORS_ORIGIN`: your frontend origin (comma-separated if needed).
+
+Local `.env` files are excluded from deployment. Schema changes are not run automatically during builds. Verify `/` and `/api/v1/health` after deployment; health reports process status, not database connectivity.
