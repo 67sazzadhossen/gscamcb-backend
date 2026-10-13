@@ -24,7 +24,8 @@
     "test": "tsx --test tests/*.test.ts",
     "verify": "npm run prisma:validate && npm run typecheck && npm run lint && npm test && npm run build",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@prisma/client": "6.19.0",
