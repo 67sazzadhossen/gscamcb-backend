@@ -26,8 +26,11 @@ const createUser = async (
     throw new AppError(403, 'You cannot create this role');
   if (payload.role !== 'STUDENT' && !payload.email)
     throw new AppError(400, 'Email is required for staff accounts');
-  if (payload.role === 'SUPER_ADMIN' && actorRole !== 'SUPER_ADMIN')
-    throw new AppError(403, 'Only a super admin can create super admins');
+  if (
+    actorRole !== 'SUPER_ADMIN' &&
+    ['SUPER_ADMIN', 'ADMIN'].includes(payload.role)
+  )
+    throw new AppError(403, 'Only a super admin can create administrators');
   if (payload.role !== 'STUDENT' && payload.profile.studentInfo)
     throw new AppError(400, 'Student info is only for students');
   if (payload.role === 'STUDENT' && payload.profile.employmentInfo)
@@ -128,6 +131,8 @@ const checkManagementRole = (targetRole: UserRole, actorRole: UserRole) => {
     throw new AppError(403, 'Administrator access required');
   if (targetRole === 'SUPER_ADMIN')
     throw new AppError(403, 'Super-admin accounts cannot be modified here');
+  if (targetRole === 'ADMIN' && actorRole !== 'SUPER_ADMIN')
+    throw new AppError(403, 'Only a super admin can modify administrators');
 };
 const updateUser = async (
   userId: string,
