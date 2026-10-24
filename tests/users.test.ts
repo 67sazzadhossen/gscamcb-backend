@@ -198,23 +198,13 @@ test('version, cadet status, and Cloudinary image metadata are validated', () =>
   );
 });
 
-test('checkManagementRole allows admin and super admin to manage all account roles', () => {
-  // Both admin and super admin can manage all roles
-  assert.doesNotThrow(() => UserServices.checkManagementRole('ADMIN', 'ADMIN'));
+test('checkManagementRole allows super admin to manage all roles and admin to manage non-admin roles', () => {
+  // Super admin can manage all roles
   assert.doesNotThrow(() =>
-    UserServices.checkManagementRole('SUPER_ADMIN', 'ADMIN'),
-  );
-  assert.doesNotThrow(() =>
-    UserServices.checkManagementRole('TEACHER', 'ADMIN'),
-  );
-  assert.doesNotThrow(() =>
-    UserServices.checkManagementRole('STUDENT', 'ADMIN'),
+    UserServices.checkManagementRole('SUPER_ADMIN', 'SUPER_ADMIN'),
   );
   assert.doesNotThrow(() =>
     UserServices.checkManagementRole('ADMIN', 'SUPER_ADMIN'),
-  );
-  assert.doesNotThrow(() =>
-    UserServices.checkManagementRole('SUPER_ADMIN', 'SUPER_ADMIN'),
   );
   assert.doesNotThrow(() =>
     UserServices.checkManagementRole('TEACHER', 'SUPER_ADMIN'),
@@ -223,8 +213,27 @@ test('checkManagementRole allows admin and super admin to manage all account rol
     UserServices.checkManagementRole('STUDENT', 'SUPER_ADMIN'),
   );
 
+  // Admin can manage non-admin roles (teacher, student, accountant, staff)
+  assert.doesNotThrow(() =>
+    UserServices.checkManagementRole('TEACHER', 'ADMIN'),
+  );
+  assert.doesNotThrow(() =>
+    UserServices.checkManagementRole('STUDENT', 'ADMIN'),
+  );
+
+  // Admin cannot manage admin or super admin roles
+  assert.throws(() => UserServices.checkManagementRole('ADMIN', 'ADMIN'), {
+    message: 'Only a super admin can manage administrators',
+  });
+  assert.throws(
+    () => UserServices.checkManagementRole('SUPER_ADMIN', 'ADMIN'),
+    {
+      message: 'Only a super admin can manage administrators',
+    },
+  );
+
   // Non-administrators cannot manage accounts
-  assert.throws(() => UserServices.checkManagementRole('ADMIN', 'TEACHER'), {
+  assert.throws(() => UserServices.checkManagementRole('TEACHER', 'TEACHER'), {
     message: 'Administrator access required',
   });
   assert.throws(() => UserServices.checkManagementRole('STUDENT', 'STUDENT'), {
