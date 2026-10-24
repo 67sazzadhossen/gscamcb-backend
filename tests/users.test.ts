@@ -9,6 +9,7 @@ import {
   updateUserSchema,
 } from '../src/app/modules/users/user.validation';
 import { hashPassword, verifyPassword } from '../src/app/utils/password';
+import { UserServices } from '../src/app/modules/users/user.service';
 
 test('every role and shift produces the confirmed eight-digit ID', () => {
   for (const [role, roleCode] of Object.entries(ROLE_CODES)) {
@@ -195,4 +196,33 @@ test('version, cadet status, and Cloudinary image metadata are validated', () =>
     }).success,
     false,
   );
+});
+
+test('checkManagementRole allows admins to manage admin accounts but blocks modifying super admin', () => {
+  // Admin can manage admin, teacher, etc.
+  assert.doesNotThrow(() => UserServices.checkManagementRole('ADMIN', 'ADMIN'));
+  assert.doesNotThrow(() =>
+    UserServices.checkManagementRole('TEACHER', 'ADMIN'),
+  );
+  assert.doesNotThrow(() =>
+    UserServices.checkManagementRole('ADMIN', 'SUPER_ADMIN'),
+  );
+
+  // Modifying super-admin accounts is blocked
+  assert.throws(
+    () => UserServices.checkManagementRole('SUPER_ADMIN', 'ADMIN'),
+    { message: 'Super-admin accounts cannot be modified here' },
+  );
+  assert.throws(
+    () => UserServices.checkManagementRole('SUPER_ADMIN', 'SUPER_ADMIN'),
+    { message: 'Super-admin accounts cannot be modified here' },
+  );
+
+  // Non-administrators cannot manage accounts
+  assert.throws(() => UserServices.checkManagementRole('ADMIN', 'TEACHER'), {
+    message: 'Administrator access required',
+  });
+  assert.throws(() => UserServices.checkManagementRole('STUDENT', 'STUDENT'), {
+    message: 'Administrator access required',
+  });
 });

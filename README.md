@@ -122,7 +122,7 @@ The seed creates a morning-shift super admin and a profile. Rerunning it does no
 | `GET /api/v1/profiles/me`           | Signed in                                                                                                                                                                                                        |
 | `PATCH /api/v1/profiles/me`         | Signed in; personal profile fields only                                                                                                                                                                          |
 
-Send `Authorization: Bearer <accessToken>` on protected requests. Only super admins can create or modify admins; the account update endpoint does not modify super-admin accounts. Blocking an account denies subsequent authenticated requests. This module does not create fabricated sample accounts for the other roles; admins create actual school users through the shared endpoint.
+Send `Authorization: Bearer <accessToken>` on protected requests. Administrators and super admins can create and manage admins; the account update endpoint does not modify super-admin accounts. Blocking an account denies subsequent authenticated requests. This module does not create fabricated sample accounts for the other roles; admins create actual school users through the shared endpoint.
 
 `BCRYPT_SALT_ROUNDS` configures password hashing (default 12; supported range 10–15). The super-admin seed reads `DEFAULT_PASSWORD`; rerunning the seed never overwrites an existing account password.
 
