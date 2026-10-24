@@ -14,10 +14,6 @@ export const createUserSchema = z
   })
   .strict()
   .refine(
-    (data) => data.role === 'STUDENT' || Boolean(data.email),
-    'Email is required for staff accounts',
-  )
-  .refine(
     (data) => data.role !== 'STUDENT' || !data.profile.employmentInfo,
     'Students cannot have employment info',
   )

@@ -6,7 +6,7 @@ const profile = {
   name: { firstName: 'Staff', lastName: 'Name' },
   shift: 'MORNING',
 };
-test('staff email is required while student email is optional', () => {
+test('email is optional for all roles including staff and students', () => {
   assert.equal(
     createUserSchema.safeParse({ role: 'STUDENT', profile }).success,
     true,
@@ -18,7 +18,16 @@ test('staff email is required while student email is optional', () => {
     'ACCOUNTANT',
     'STAFF',
   ]) {
-    assert.equal(createUserSchema.safeParse({ role, profile }).success, false);
+    assert.equal(
+      createUserSchema.safeParse({
+        role,
+        profile: {
+          ...profile,
+          employmentInfo: { designation: role, qualification: 'Graduate' },
+        },
+      }).success,
+      true,
+    );
     assert.equal(
       createUserSchema.safeParse({
         role,

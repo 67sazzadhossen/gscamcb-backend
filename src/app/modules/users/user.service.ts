@@ -24,8 +24,6 @@ const createUser = async (
     !(actorRole === 'TEACHER' && payload.role === 'STUDENT')
   )
     throw new AppError(403, 'You cannot create this role');
-  if (payload.role !== 'STUDENT' && !payload.email)
-    throw new AppError(400, 'Email is required for staff accounts');
   if (
     actorRole !== 'SUPER_ADMIN' &&
     ['SUPER_ADMIN', 'ADMIN'].includes(payload.role)
