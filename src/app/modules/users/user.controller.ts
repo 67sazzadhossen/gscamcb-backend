@@ -90,7 +90,7 @@ const permanentlyDeleteUser = catchAsync(async (req, res) => {
   sendResponse(res, {
     statusCode: 200,
     success: true,
-    message: 'Student permanently deleted',
+    message: 'Account permanently deleted',
     data: null,
   });
 });

@@ -26,11 +26,6 @@ const createUser = async (
     throw new AppError(403, 'You cannot create this role');
   if (payload.role !== 'STUDENT' && !payload.email)
     throw new AppError(400, 'Email is required for staff accounts');
-  if (
-    actorRole !== 'SUPER_ADMIN' &&
-    ['SUPER_ADMIN', 'ADMIN'].includes(payload.role)
-  )
-    throw new AppError(403, 'Only a super admin can create administrators');
   if (payload.role !== 'STUDENT' && payload.profile.studentInfo)
     throw new AppError(400, 'Student info is only for students');
   if (payload.role === 'STUDENT' && payload.profile.employmentInfo)
@@ -129,10 +124,6 @@ const listUsers = async (query: unknown, isDeleted = false) => {
 const checkManagementRole = (targetRole: UserRole, actorRole: UserRole) => {
   if (!['SUPER_ADMIN', 'ADMIN'].includes(actorRole))
     throw new AppError(403, 'Administrator access required');
-  if (targetRole === 'SUPER_ADMIN')
-    throw new AppError(403, 'Super-admin accounts cannot be modified here');
-  if (targetRole === 'ADMIN' && actorRole !== 'SUPER_ADMIN')
-    throw new AppError(403, 'Only a super admin can modify administrators');
 };
 const updateUser = async (
   userId: string,
@@ -196,11 +187,6 @@ const restoreUser = async (userId: string, actorRole: UserRole) => {
 const permanentlyDeleteUser = async (userId: string, actorRole: UserRole) => {
   const user = await getUser(userId, true);
   checkManagementRole(user.role, actorRole);
-  if (user.role !== 'STUDENT')
-    throw new AppError(
-      400,
-      'Permanent deletion currently supports student accounts only',
-    );
   return prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM users WHERE id = ${user.id}::uuid FOR UPDATE`;
     const current = await tx.user.findUniqueOrThrow({
@@ -210,7 +196,7 @@ const permanentlyDeleteUser = async (userId: string, actorRole: UserRole) => {
     if (!current.isDeleted)
       throw new AppError(
         409,
-        'Move the student to the recycle bin before permanent deletion',
+        'Move the account to the recycle bin before permanent deletion',
       );
     const profile = current.profile;
     if (profile) await deleteProfile(tx, profile);

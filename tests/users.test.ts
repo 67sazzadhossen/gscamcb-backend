@@ -198,31 +198,29 @@ test('version, cadet status, and Cloudinary image metadata are validated', () =>
   );
 });
 
-test('checkManagementRole allows super admin to manage admin accounts but blocks admin from modifying other admins and super admin', () => {
-  // Super admin can manage admin, teacher, etc.
+test('checkManagementRole allows admin and super admin to manage all account roles', () => {
+  // Both admin and super admin can manage all roles
+  assert.doesNotThrow(() => UserServices.checkManagementRole('ADMIN', 'ADMIN'));
+  assert.doesNotThrow(() =>
+    UserServices.checkManagementRole('SUPER_ADMIN', 'ADMIN'),
+  );
+  assert.doesNotThrow(() =>
+    UserServices.checkManagementRole('TEACHER', 'ADMIN'),
+  );
+  assert.doesNotThrow(() =>
+    UserServices.checkManagementRole('STUDENT', 'ADMIN'),
+  );
   assert.doesNotThrow(() =>
     UserServices.checkManagementRole('ADMIN', 'SUPER_ADMIN'),
   );
   assert.doesNotThrow(() =>
+    UserServices.checkManagementRole('SUPER_ADMIN', 'SUPER_ADMIN'),
+  );
+  assert.doesNotThrow(() =>
     UserServices.checkManagementRole('TEACHER', 'SUPER_ADMIN'),
   );
-
-  // Admin can manage teachers, staff, etc., but cannot manage other admins
   assert.doesNotThrow(() =>
-    UserServices.checkManagementRole('TEACHER', 'ADMIN'),
-  );
-  assert.throws(() => UserServices.checkManagementRole('ADMIN', 'ADMIN'), {
-    message: 'Only a super admin can modify administrators',
-  });
-
-  // Modifying super-admin accounts is blocked for everyone
-  assert.throws(
-    () => UserServices.checkManagementRole('SUPER_ADMIN', 'ADMIN'),
-    { message: 'Super-admin accounts cannot be modified here' },
-  );
-  assert.throws(
-    () => UserServices.checkManagementRole('SUPER_ADMIN', 'SUPER_ADMIN'),
-    { message: 'Super-admin accounts cannot be modified here' },
+    UserServices.checkManagementRole('STUDENT', 'SUPER_ADMIN'),
   );
 
   // Non-administrators cannot manage accounts
